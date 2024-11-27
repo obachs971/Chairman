@@ -6,16 +6,14 @@ public class GameState
 {
     public Deck playPile;
     public Bot[] players;
-    public int direction;
+    public int[] initialHandCounts;
+    public int turnDirection;
     public int currentPlayer;
-    public bool hasPlayed;
-
-    public GameState(Deck playPile, Bot[] players, int direction, int currentPlayer, bool hasPlayed)
-    {
-        this.playPile = playPile;
-        this.players = players;
-        this.direction = direction;
-        this.currentPlayer = currentPlayer;
-        this.hasPlayed = hasPlayed;
-    }
+    public int playerTakingAction;
+    public bool currPlayerPlayed;
+    public bool prevPlayerPlayed;
+    public int highestCardValue;
+    public GameObjectMain whiteCircle;
+    public List<Rule> triggeredRules;
+    public List<Rule> previousTriggeredRules;
 }

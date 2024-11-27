@@ -37,18 +37,18 @@ public class Deck
         }
         return null;
     }
-    public Card getCard(int n)
+    public Card GetCard(int n)
     {
         if (n < 0 || n >= deck.Count)
             return null;
-        return deck[n];
+        return deck[deck.Count - (n + 1)];
     }
-    public Card removeCard(int n)
+    public Card RemoveCard(int n)
     {
         if (n < 0 || n >= deck.Count)
             return null;
-        Card removed = deck[n];
-        deck.RemoveAt(n);
+        Card removed = deck[deck.Count - (n + 1)];
+        deck.RemoveAt(deck.Count - (n + 1));
         return removed;
     }
     public int getDeckSize()

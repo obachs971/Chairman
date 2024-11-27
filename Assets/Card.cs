@@ -29,16 +29,39 @@ namespace CardStuff
             Queen = 12,
             King = 13
         }
-        public CardRank rank;
-        public CardSuit suit;
+        private CardRank rank;
+        private CardSuit suit;
+        private CardRank actualRank;
+        private CardSuit actualSuit;
         public Card(CardRank rank, CardSuit suit)
         {
             this.rank = rank;
             this.suit = suit;
+            actualRank = rank;
+            actualSuit = suit;
         }
+        public CardRank getRank()
+        {
+            return actualRank;
+        }
+        public CardSuit getSuit()
+        {
+            return actualSuit;
+        }
+
         public string toString()
         {
             return rank + " of " + suit;
+        }
+        public void changeCardValues(CardRank rank, CardSuit suit)
+        {
+            actualRank = rank;
+            actualSuit = suit;
+        }
+        public void revertCardChanges()
+        {
+            actualRank = rank;
+            actualSuit = suit;
         }
     }
 }
