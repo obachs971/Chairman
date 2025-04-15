@@ -8,6 +8,7 @@ public class Bot
 	private List<Card> hand;
 	private List<Card> playPileThought;
 	private Dictionary<Rule, int> ruleScores;
+	private Dictionary<Rule, int> interRuleScores;
 	private Dictionary<Rule, int> results;
 	private int MAX_CARDS_IN_THOUGHT = 5;
 	private Dictionary<int, GameObjectObj> heldObjects;
@@ -16,12 +17,14 @@ public class Bot
 		hand = new List<Card>();
 		playPileThought = new List<Card>();
 		ruleScores = new Dictionary<Rule, int>();
+		interRuleScores = new Dictionary<Rule, int>();
 		results = new Dictionary<Rule, int>();
 		heldObjects = new Dictionary<int, GameObjectObj>();
 	}
 	public void addRule(Rule rule)
 	{
 		ruleScores.Add(rule, 0);
+		interRuleScores.Add(rule, 0);
 		results.Add(rule, 0);
 	}
 	public void Draw(Card c)
@@ -58,40 +61,46 @@ public class Bot
 	{
 		heldObjects.Remove(gameObject.id);
 	}
-	public bool willTriggerRule(Rule rule, GameState gameState, List<Rule> triggeredCardChangingRules, int playerTakingAction, int nextTurnCounter, int prevPlayer, int lastPlayerPassed, int lastPlayerPlayed)
+	public bool willTriggerRule(Rule rule, GameState gameState, List<Rule> triggeredCardChangingRules, List<Rule> triggeredValidChangingRules, int nextTurnCounter, int prevPlayer)
 	{
 		bool willFollowRule = results[rule] <= ruleScores[rule];
 		if (willFollowRule)
 		{
-			bool b = rule.HasTriggered(gameState, playerTakingAction, nextTurnCounter, prevPlayer, lastPlayerPassed, lastPlayerPlayed);
+			bool b = rule.HasTriggered(gameState, nextTurnCounter, prevPlayer);
 			if (b)
 			{
 				gameState.playPile = getPlayPileThought(playPileThought);
-				b = rule.HasTriggered(gameState, playerTakingAction, nextTurnCounter, prevPlayer, lastPlayerPassed, lastPlayerPlayed);
+				b = rule.HasTriggered(gameState, nextTurnCounter, prevPlayer);
 				if (b)
 				{
-					addToRuleScore(rule, 10);
+					addToInterRuleScore(rule, 10);
 					foreach (Rule TVCR in triggeredCardChangingRules)
-						addToRuleScore(TVCR, 10);
+						addToInterRuleScore(TVCR, 10);
+					foreach (Rule TVCR in triggeredValidChangingRules)
+						addToInterRuleScore(TVCR, 10);
 					return true;
 				}
 				else
 				{
-					addToRuleScore(rule, 5);
+					addToInterRuleScore(rule, 5);
 					foreach (Rule TVCR in triggeredCardChangingRules)
-						addToRuleScore(TVCR, 5);
+						addToInterRuleScore(TVCR, 5);
+					foreach (Rule TVCR in triggeredValidChangingRules)
+						addToInterRuleScore(TVCR, 5);
 					return false;
 				}
 			}
 			else
 			{
 				gameState.playPile = getPlayPileThought(playPileThought);
-				b = rule.HasTriggered(gameState, playerTakingAction, nextTurnCounter, prevPlayer, lastPlayerPassed, lastPlayerPlayed);
+				b = rule.HasTriggered(gameState, nextTurnCounter, prevPlayer);
 				if (b)
 				{
-					addToRuleScore(rule, 5);
+					addToInterRuleScore(rule, 5);
 					foreach (Rule TVCR in triggeredCardChangingRules)
-						addToRuleScore(TVCR, 5);
+						addToInterRuleScore(TVCR, 5);
+					foreach (Rule TVCR in triggeredValidChangingRules)
+						addToInterRuleScore(TVCR, 5);
 					return true;
 				}
 				else
@@ -102,28 +111,41 @@ public class Bot
 		}
 		else
 		{
-			bool b = rule.HasTriggered(gameState, playerTakingAction, nextTurnCounter, prevPlayer, lastPlayerPassed, lastPlayerPlayed);
+			bool b = rule.HasTriggered(gameState, nextTurnCounter, prevPlayer);
 			if (b)
-				addToRuleScore(rule, 10);
+				addToInterRuleScore(rule, 10);
 			return false;
 		}
 	}
-	public bool willTriggerRule(Rule rule, GameState gameState, int playerTakingAction, int nextTurnCounter, int prevPlayer, int lastPlayerPassed, int lastPlayerPlayed)
+	public void addScoresToTheEndOfRound()
+	{
+		foreach (KeyValuePair<Rule, int> score in interRuleScores)
+		{
+			if (ruleScores[score.Key] < 100 && score.Value > 0)
+			{
+				ruleScores[score.Key] += score.Value;
+			}
+		}
+		foreach (KeyValuePair<Rule, int> score in ruleScores)
+		{
+			interRuleScores[score.Key] = 0;
+		}
+	}
+	public bool willTriggerRule(Rule rule, GameState gameState, int nextTurnCounter, int prevPlayer)
 	{
 		bool willFollowRule = results[rule] <= ruleScores[rule];
 		if (willFollowRule)
 		{
-			return rule.HasTriggered(gameState, playerTakingAction, nextTurnCounter, prevPlayer, lastPlayerPassed, lastPlayerPlayed);
+			return rule.HasTriggered(gameState, nextTurnCounter, prevPlayer);
 		}
 		else
 		{
 			return false;
 		}
 	}
-	public void addToRuleScore(Rule rule, int score)
+	public void addToInterRuleScore(Rule rule, int score)
 	{
-		if (ruleScores[rule] < 100)
-			ruleScores[rule] += score;
+		interRuleScores[rule] += score;
 	}
 
 	public void addPlayPileCard(Card card)
@@ -134,7 +156,7 @@ public class Bot
 	}
 	public Deck getPlayPileThought(List<Card> allCards)
 	{
-		Deck PPT = new Deck(0, allCards);
+		Deck PPT = new Deck(0, allCards, null, 0f, "Play Pile Thought");
 		foreach (Card card in playPileThought)
 			PPT.AddToDeck(card);
 		return PPT;

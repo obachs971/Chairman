@@ -103,7 +103,7 @@ namespace TriggerStuff
         }
         public override string toString()
         {
-            return "If the rank of the current card and the previous card have a difference of " + difference + " (wrapping around), ";
+            return "If the rank of the played card and the previous card have a difference of " + difference + " (wrapping around), ";
         }
     }
     public class sameSuit : Trigger
@@ -120,7 +120,7 @@ namespace TriggerStuff
         }
         public override string toString()
         {
-            return "If the suit of the current card and the previous card are the same, ";
+            return "If the suit of the played card and the previous card are the same, ";
         }
     }
     public class differentSuit : Trigger
@@ -137,7 +137,7 @@ namespace TriggerStuff
         }
         public override string toString()
         {
-            return "If the suit of the current card and the previous card are different, ";
+            return "If the suit of the played card and the previous card are different, ";
         }
     }
     public class SuitWithSuit : Trigger
@@ -161,32 +161,63 @@ namespace TriggerStuff
         }
         public override string toString()
         {
-            return "If both the current and previous card are a " + suit1 + " and a " + suit2 + ", ";
+            return "If both the played and previous card are a " + suit1 + " and a " + suit2 + ", ";
         }
     }
-    public class CurrentPlayerHasXCards : Trigger
+    public class CurrentPlayerHasXCardsAfterPlaying : Trigger
     {
         int numCards;
-        public CurrentPlayerHasXCards(int numCards) : base()
+        public CurrentPlayerHasXCardsAfterPlaying(int numCards) : base()
         {
             this.numCards = numCards;
         }
         public override bool HasTriggered(GameState gameState)
         {
-            return gameState.initialHandCounts[gameState.currentPlayer] == numCards;
+            return gameState.currPlayerPlayed && (gameState.handCountsAfterDrawPlay[gameState.currentPlayer] == numCards);
         }
         public override string toString()
         {
-            return numCards == 1 ?  "If the current player has exactly 1 card left in their hand before drawing/playing, " : "If the current player has exactly " + numCards + " cards left in their hand before drawing/playing, ";
+            return numCards == 1 ?  "If the current player plays down to 1 card, " : "If the current player plays down to " + numCards + " cards, ";
         }
     }
     public class XPlayerIndex
     {
+        public List<int> getPlayerIndexes(XPlayerAction playerAction, GameState gameState, int turnCounter, int turnDirection, int nextTurnCounter, int numPlayers, int prevPlayer)
+        {
+            switch (playerAction)
+            {
+                case XPlayerAction.CURRENT_PLAYER: return new List<int>() { turnCounter };
+                case XPlayerAction.CW_OF_CURRENT: return new List<int>() { mod(turnCounter + 1, numPlayers) };
+                case XPlayerAction.CCW_OF_CURRENT: return new List<int>() { mod(turnCounter - 1, numPlayers) };
+                case XPlayerAction.OPPOSITE_PLAYER: return new List<int>() { mod(turnCounter + (numPlayers / 2), numPlayers) };
+                case XPlayerAction.NEXT_PLAYER: return new List<int>() { mod(nextTurnCounter + turnDirection, numPlayers) };
+                case XPlayerAction.PREVIOUS_PLAYER: 
+                    if(prevPlayer >= 0)
+                        return new List<int>() { prevPlayer };
+                    return new List<int>();
+                case XPlayerAction.PLAYER_WITH_WHITE_CIRCLE:
+                    for (int i = 0; i < numPlayers; i++)
+                    {
+                        if (gameState.players[i].hasObject(gameState.whiteCircle))
+                            return new List<int>() { i };
+                    }
+                    return new List<int>();
+                case XPlayerAction.PLAYER_WITH_BLUE_SQUARE:
+                    for (int i = 0; i < numPlayers; i++)
+                    {
+                        if (gameState.players[i].hasObject(gameState.blueSquare))
+                            return new List<int>() { i };
+                    }
+                    return new List<int>();
+            }
+            return new List<int>();
+        }
+        
+        /*
         public int getPlayerIndex(XPlayerAction playerAction, GameState gameState, int turnCounter, int turnDirection, int nextTurnCounter, int numPlayers, int prevPlayer, int lastPlayerPassed, int lastPlayerPlayed)
         {
             switch (playerAction)
             {
-                case XPlayerAction.NULL: return 0;
                 case XPlayerAction.CURRENT_PLAYER: return turnCounter;
                 case XPlayerAction.CW_OF_CURRENT: return mod(turnCounter + 1, numPlayers);
                 case XPlayerAction.CCW_OF_CURRENT: return mod(turnCounter - 1, numPlayers);
@@ -196,18 +227,23 @@ namespace TriggerStuff
                 case XPlayerAction.LAST_PLAYER_PASSED: return lastPlayerPassed;
                 case XPlayerAction.LAST_PLAYER_PLAYED: return lastPlayerPlayed;
                 case XPlayerAction.PLAYER_WITH_WHITE_CIRCLE:
-                    if(gameState.whiteCircle != null)
+                    for (int i = 0; i < numPlayers; i++)
                     {
-                        for (int i = 0; i < numPlayers; i++)
-                        {
-                            if (gameState.players[i].hasObject(gameState.whiteCircle))
-                                return i;
-                        }
+                        if (gameState.players[i].hasObject(gameState.whiteCircle))
+                            return i;
+                    }
+                    return -1;
+                case XPlayerAction.PLAYER_WITH_BLUE_SQUARE:
+                    for (int i = 0; i < numPlayers; i++)
+                    {
+                        if (gameState.players[i].hasObject(gameState.blueSquare))
+                            return i;
                     }
                     return -1;
             }
             return -1;
         }
+        */
         int mod(int n, int m)
         {
             return (n % m + m) % m;

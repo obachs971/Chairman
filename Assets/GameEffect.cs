@@ -9,18 +9,21 @@ using System.Reflection;
 
 public enum Effect
 {
+	START_GAME,
+	DRAW_CARD,
+	PLAY_CARD,
+	RETURN_CARD,
+	CHAIRMAN_VIOLATION,
+	RETURN_GAME_OBJECT,
+	PLAYER_TURN_START,
+
 	REVERSE_TURN_ORDER,
 	SKIP_NEXT_PLAYER_TURN,
 	PLAY_AGAIN,
 	ADD_OFFSET_TO_RANK,
 	SAY_PHRASE,
 	FORBIDDEN_SUIT,
-	TAKE_WHITE_CIRCLE,
-}
-public enum Phrase
-{
-	[Description("Have a nice day")]
-	HAVE_A_NICE_DAY = 0,
+	TAKE_GAME_OBJECT
 }
 public enum XPlayerAction
 {
@@ -28,7 +31,7 @@ public enum XPlayerAction
 	NULL,
 	[Description("the player currently taking their turn")]
 	CURRENT_PLAYER,
-	[Description("the player before the current player in turn order")]
+	[Description("the player that took their turn previously")]
 	PREVIOUS_PLAYER,
 	[Description("the player going to take their next turn")]
 	NEXT_PLAYER,
@@ -38,12 +41,39 @@ public enum XPlayerAction
 	CW_OF_CURRENT,
 	[Description("the player counter-clockwise from the player that is currently taking their turn")]
 	CCW_OF_CURRENT,
-	[Description("the last player that didn't play a card from their hand to the play pile during their turn")]
-	LAST_PLAYER_PASSED,
-	[Description("the last player that played a card from their hand to the play pile during their turn")]
-	LAST_PLAYER_PLAYED,
-	[Description("the player with the white circle")]
-	PLAYER_WITH_WHITE_CIRCLE
+	[Description("the player with the White Circle")]
+	PLAYER_WITH_WHITE_CIRCLE,
+	[Description("the player with the Blue Square")]
+	PLAYER_WITH_BLUE_SQUARE,
+
+}
+public class ViolationInfo
+{
+	public ViolationPhrases violation;
+	public Phrase phrase;
+	public ViolationInfo(ViolationPhrases violation)
+	{
+		this.violation = violation;
+		this.phrase = Phrase.NULL;
+	}
+	public ViolationInfo(ViolationPhrases violation, Phrase phrase)
+	{
+		this.violation = violation;
+		this.phrase = phrase;
+	}
+	public string toString()
+	{
+		FieldInfo fieldInfo = violation.GetType().GetField(violation.ToString());
+		DescriptionAttribute descAttribute = System.Attribute.GetCustomAttribute(fieldInfo, typeof(DescriptionAttribute)) as DescriptionAttribute;
+		string str = descAttribute.Description;
+		if(phrase != Phrase.NULL)
+		{
+			FieldInfo fieldInfoPhrase = phrase.GetType().GetField(phrase.ToString());
+			DescriptionAttribute descAttributePhrase = System.Attribute.GetCustomAttribute(fieldInfoPhrase, typeof(DescriptionAttribute)) as DescriptionAttribute;
+			str = str + ": '" + descAttributePhrase.Description + "'";
+		}
+		return str;
+	}
 }
 public abstract class GameEffect 
 {
@@ -52,9 +82,21 @@ public abstract class GameEffect
 	public bool isAction = false;
 	public bool spawnsObj = false;
 	public bool needsObj = false;
-	public GameEffect(Effect effect, List<Trigger> triggerList)
+	public ViolationInfo failureToPerformAction;
+	public ViolationInfo illegalPerformAction;
+
+	public GameEffect(Effect effect, ViolationPhrases failureToPerformAction, ViolationPhrases illegalPerformAction, List<Trigger> triggerList)
 	{
 		this.effect = effect;
+		this.failureToPerformAction = new ViolationInfo(failureToPerformAction);
+		this.illegalPerformAction = new ViolationInfo(illegalPerformAction);
+		this.triggerList = triggerList;
+	}
+	public GameEffect(Effect effect, ViolationInfo failureToPerformAction, ViolationInfo illegalPerformAction, List<Trigger> triggerList)
+	{
+		this.effect = effect;
+		this.failureToPerformAction = failureToPerformAction;
+		this.illegalPerformAction = illegalPerformAction;
 		this.triggerList = triggerList;
 	}
 	public abstract string toString();
@@ -92,7 +134,12 @@ public abstract class ActionEffect : GameEffect
 	private List<XPlayerAction> xPlayerActions;
 	public Trigger[] newTriggers = null;
 	public XPlayerAction[] newXPlayerActions = null;
-	public ActionEffect(Effect effect, List<XPlayerAction> xPlayerActions, List<Trigger> triggerList) : base(effect, triggerList)
+	public ActionEffect(Effect effect, ViolationPhrases failureToPerformAction, ViolationPhrases illegalPerformAction, List<XPlayerAction> xPlayerActions, List<Trigger> triggerList) : base(effect, failureToPerformAction, illegalPerformAction, triggerList)
+	{
+		this.xPlayerActions = xPlayerActions;
+		base.isAction = true;
+	}
+	public ActionEffect(Effect effect, ViolationInfo failureToPerformAction, ViolationInfo illegalPerformAction, List<XPlayerAction> xPlayerActions, List<Trigger> triggerList) : base(effect, failureToPerformAction, illegalPerformAction, triggerList)
 	{
 		this.xPlayerActions = xPlayerActions;
 		base.isAction = true;
@@ -113,8 +160,11 @@ public abstract class ActionEffect : GameEffect
 		}
 		return false;
 	}
+	public abstract string actionString(XPlayerAction receivingPlayer);
+	public abstract string failureToPerformActionString();
+	public abstract string illegalActionString();
 }
-public class GameObjectMain
+public abstract class GameObjectMain
 {
 	public int id;
 	public static int gameObjCounter = 0;
@@ -124,6 +174,7 @@ public class GameObjectMain
 		this.id = gameObjCounter++;
 		this.gameObject = gameObject;
 	}
+	public abstract string toString(int index);
 }
 public class GameObjectObj
 {
@@ -137,13 +188,15 @@ public class GameObjectObj
 
 	public GameObjectObj(MeshRenderer meshRenderer, bool[][] shape, float standingY, float movingY)
 	{
-		this.meshRenderer = meshRenderer;
-		this.vector3Size = new Vector3(meshRenderer.transform.localScale.x, meshRenderer.transform.localScale.y, meshRenderer.transform.localScale.z);
+		if(meshRenderer != null)
+		{
+			this.meshRenderer = meshRenderer;
+			this.vector3Size = new Vector3(meshRenderer.transform.localScale.x, meshRenderer.transform.localScale.y, meshRenderer.transform.localScale.z);
+			meshRenderer.transform.localScale = new Vector3(0f, 0f, 0f);
+			meshRenderer.transform.localPosition = new Vector3(0f, 0f, 0f);
+		}
 		this.standingY = standingY;
 		this.movingY = movingY;
-		meshRenderer.transform.localScale = new Vector3(0f, 0f, 0f);
-		meshRenderer.transform.localPosition = new Vector3(0f, 0f, 0f);
-
 		this.shape = shape;
 		tablePlacement = null;
 		playerPlacement = null;
@@ -160,17 +213,21 @@ public class GameObjectObj
 public abstract class ObjectEffect : ActionEffect
 {
 	public GameObjectMain gameObject;
+	public Effect undoEffect;
 	public bool startsOnTable;
 	public bool playToTable;
 	public bool playToPlayer;
 	public bool mustBeOnPlayerToTrigger;
 	public List<XPlayerAction> receivingPlayerList;
 	public XPlayerAction receivingPlayer = XPlayerAction.NULL;
-	public ObjectEffect(Effect effect, bool spawnsObj, bool needsObj, GameObjectMain gameObject, bool startsOnTable, bool playToTable, bool playToPlayer, bool mustBeOnPlayerToTrigger, List<XPlayerAction> xPlayerActions, List<Trigger> triggerList, List<XPlayerAction> receivingPlayerList) : base(effect, xPlayerActions, triggerList)
+	public XPlayerAction playerWithObject;
+	public ObjectEffect(Effect effect, ViolationPhrases failureToPerformAction, ViolationPhrases illegalPerformAction, Effect undoEffect, XPlayerAction playerWithObject, bool spawnsObj, bool needsObj, GameObjectMain gameObject, bool startsOnTable, bool playToTable, bool playToPlayer, bool mustBeOnPlayerToTrigger, List<XPlayerAction> xPlayerActions, List<Trigger> triggerList, List<XPlayerAction> receivingPlayerList) : base(effect, failureToPerformAction, illegalPerformAction, xPlayerActions, triggerList)
 	{
 		base.spawnsObj = spawnsObj;
 		base.needsObj = needsObj;
 		this.gameObject = gameObject;
+		this.undoEffect = undoEffect;
+		this.playerWithObject = playerWithObject;
 		this.startsOnTable = startsOnTable;
 		this.playToTable = playToTable;
 		this.playToPlayer = playToPlayer;
@@ -179,11 +236,12 @@ public abstract class ObjectEffect : ActionEffect
 	}
 	public abstract bool pickReceivingPlayer(List<XPlayerAction> RPL);
 	public abstract XPlayerAction[] getNewXPlayerActions();
-	
+
+	public abstract string undoActionString(List<int> players, string[] playerNames);
 }
 public class ReverseTurnOrder : GameEffect
 {
-	public ReverseTurnOrder() : base(Effect.REVERSE_TURN_ORDER, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), new CurrentPlayerHasXCards(1), new CurrentPlayerHasXCards(2), new CurrentPlayerHasXCards(3), new CurrentPlayerHasXCards(4), })
+	public ReverseTurnOrder() : base(Effect.REVERSE_TURN_ORDER, ViolationPhrases.FAILURE_TO_PLAY, ViolationPhrases.PLAYING_OUT_OF_TURN, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), new CurrentPlayerHasXCardsAfterPlaying(1), new CurrentPlayerHasXCardsAfterPlaying(2), new CurrentPlayerHasXCardsAfterPlaying(3), new CurrentPlayerHasXCardsAfterPlaying(4), })
 	{
 
 	}
@@ -194,7 +252,7 @@ public class ReverseTurnOrder : GameEffect
 }
 public class SkipNextPlayerTurn : GameEffect
 {
-	public SkipNextPlayerTurn() : base(Effect.SKIP_NEXT_PLAYER_TURN, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), new CurrentPlayerHasXCards(1), new CurrentPlayerHasXCards(2), new CurrentPlayerHasXCards(3), new CurrentPlayerHasXCards(4), })
+	public SkipNextPlayerTurn() : base(Effect.SKIP_NEXT_PLAYER_TURN, ViolationPhrases.FAILURE_TO_PLAY, ViolationPhrases.PLAYING_OUT_OF_TURN, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), new CurrentPlayerHasXCardsAfterPlaying(1), new CurrentPlayerHasXCardsAfterPlaying(2), new CurrentPlayerHasXCardsAfterPlaying(3), new CurrentPlayerHasXCardsAfterPlaying(4), })
 	{
 
 	}
@@ -205,7 +263,7 @@ public class SkipNextPlayerTurn : GameEffect
 }
 public class PlayAgain : GameEffect
 {
-	public PlayAgain() : base(Effect.PLAY_AGAIN, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), })
+	public PlayAgain() : base(Effect.PLAY_AGAIN, ViolationPhrases.FAILURE_TO_PLAY, ViolationPhrases.PLAYING_OUT_OF_TURN, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), })
 	{
 
 	}
@@ -217,11 +275,11 @@ public class PlayAgain : GameEffect
 public class SayPhrase : ActionEffect
 {
 	public Phrase phrase;
-	public SayPhrase(Phrase phrase, List<XPlayerAction> xPlayerActions) : base(Effect.SAY_PHRASE, xPlayerActions, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), })
+	public SayPhrase(Phrase phrase, List<XPlayerAction> xPlayerActions) : base(Effect.SAY_PHRASE, new ViolationInfo(ViolationPhrases.FAILURE_TO_SAY, phrase), new ViolationInfo(ViolationPhrases.TALKING), xPlayerActions, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), })
 	{
 		this.phrase = phrase;
 	}
-	public SayPhrase(Phrase phrase, List<XPlayerAction> xPlayerActions, List<Trigger> triggers) : base(Effect.SAY_PHRASE, xPlayerActions, triggers)
+	public SayPhrase(Phrase phrase, List<XPlayerAction> xPlayerActions, List<Trigger> triggers) : base(Effect.SAY_PHRASE, new ViolationInfo(ViolationPhrases.FAILURE_TO_SAY, phrase), new ViolationInfo(ViolationPhrases.TALKING), xPlayerActions, triggers)
 	{
 		this.phrase = phrase;
 	}
@@ -233,10 +291,26 @@ public class SayPhrase : ActionEffect
 		DescriptionAttribute attribute2 = Attribute.GetCustomAttribute(field2, typeof(DescriptionAttribute)) as DescriptionAttribute;
 		return attribute1.Description + " must say the following phrase: " + attribute2.Description;
 	}
+	public override string actionString(XPlayerAction receivingPlayer)
+	{
+		FieldInfo field2 = phrase.GetType().GetField(phrase.ToString());
+		DescriptionAttribute attribute2 = Attribute.GetCustomAttribute(field2, typeof(DescriptionAttribute)) as DescriptionAttribute;
+		return attribute2.Description;
+	}
+	public override string failureToPerformActionString()
+	{
+		FieldInfo field2 = phrase.GetType().GetField(phrase.ToString());
+		DescriptionAttribute attribute2 = Attribute.GetCustomAttribute(field2, typeof(DescriptionAttribute)) as DescriptionAttribute;
+		return "Failure to say '" + attribute2.Description + "'";
+	}
+	public override string illegalActionString()
+	{
+		return "Talking";
+	}
 }
 public class ForbiddenSuit : GameEffect
 {
-	public ForbiddenSuit() : base(Effect.FORBIDDEN_SUIT, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Diamonds), new CurrentPlayerHasXCards(1), new CurrentPlayerHasXCards(2), new CurrentPlayerHasXCards(3), new CurrentPlayerHasXCards(4) })
+	public ForbiddenSuit() : base(Effect.FORBIDDEN_SUIT, ViolationPhrases.BAD_CARD, ViolationPhrases.BAD_CARD, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Diamonds), new CurrentPlayerHasXCardsAfterPlaying(1), new CurrentPlayerHasXCardsAfterPlaying(2), new CurrentPlayerHasXCardsAfterPlaying(3), new CurrentPlayerHasXCardsAfterPlaying(4) })
 	{
 
 	}
@@ -248,7 +322,7 @@ public class ForbiddenSuit : GameEffect
 public class AddOffsetToRank : GameEffect
 {
 	public int offset;
-	public AddOffsetToRank(int offset) : base(Effect.ADD_OFFSET_TO_RANK, new List<Trigger>() { new onSuit(Card.CardSuit.Spades), new onSuit(Card.CardSuit.Hearts), new onSuit(Card.CardSuit.Clubs), new onSuit(Card.CardSuit.Diamonds), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new prevCardIsSuit(Card.CardSuit.Spades), new prevCardIsSuit(Card.CardSuit.Hearts), new prevCardIsSuit(Card.CardSuit.Clubs), new prevCardIsSuit(Card.CardSuit.Diamonds), new differentSuit(), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Diamonds), new CurrentPlayerHasXCards(1), new CurrentPlayerHasXCards(2), new CurrentPlayerHasXCards(3), new CurrentPlayerHasXCards(4) })
+	public AddOffsetToRank(int offset) : base(Effect.ADD_OFFSET_TO_RANK, ViolationPhrases.BAD_CARD, ViolationPhrases.BAD_CARD, new List<Trigger>() { new onSuit(Card.CardSuit.Spades), new onSuit(Card.CardSuit.Hearts), new onSuit(Card.CardSuit.Clubs), new onSuit(Card.CardSuit.Diamonds), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new prevCardIsSuit(Card.CardSuit.Spades), new prevCardIsSuit(Card.CardSuit.Hearts), new prevCardIsSuit(Card.CardSuit.Clubs), new prevCardIsSuit(Card.CardSuit.Diamonds), new differentSuit(), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Diamonds), new CurrentPlayerHasXCardsAfterPlaying(1), new CurrentPlayerHasXCardsAfterPlaying(2), new CurrentPlayerHasXCardsAfterPlaying(3), new CurrentPlayerHasXCardsAfterPlaying(4) })
 	{
 		this.offset = offset;
 	}
@@ -263,10 +337,14 @@ public class WhiteCircle : GameObjectMain
 	{
 		
 	}
+	public override string toString(int index)
+	{
+		return "White Circle";
+	}
 }
 public class TakeWhiteCircle : ObjectEffect
 {
-	public TakeWhiteCircle(WhiteCircle WC) : base(Effect.TAKE_WHITE_CIRCLE, true, false, WC, true, false, true, false, new List<XPlayerAction>() { XPlayerAction.CCW_OF_CURRENT, XPlayerAction.CURRENT_PLAYER, XPlayerAction.CW_OF_CURRENT, XPlayerAction.LAST_PLAYER_PASSED, XPlayerAction.LAST_PLAYER_PLAYED, XPlayerAction.NEXT_PLAYER, XPlayerAction.OPPOSITE_PLAYER, XPlayerAction.PREVIOUS_PLAYER }, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new onSuit(Card.CardSuit.Spades), new onSuit(Card.CardSuit.Hearts), new onSuit(Card.CardSuit.Clubs), new onSuit(Card.CardSuit.Diamonds), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new prevCardIsSuit(Card.CardSuit.Spades), new prevCardIsSuit(Card.CardSuit.Hearts), new prevCardIsSuit(Card.CardSuit.Clubs), new prevCardIsSuit(Card.CardSuit.Diamonds), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Spades), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Diamonds, Card.CardSuit.Diamonds), new CurrentPlayerHasXCards(1), new CurrentPlayerHasXCards(2), new CurrentPlayerHasXCards(3), new CurrentPlayerHasXCards(4) }, null)
+	public TakeWhiteCircle(WhiteCircle WC) : base(Effect.TAKE_GAME_OBJECT, ViolationPhrases.FAILURE_TAKING_WHITE_CIRCLE, ViolationPhrases.BAD_TAKING_WHITE_CIRCLE, Effect.RETURN_GAME_OBJECT, XPlayerAction.PLAYER_WITH_WHITE_CIRCLE, true, false, WC, true, false, true, false, new List<XPlayerAction>() { XPlayerAction.CCW_OF_CURRENT, XPlayerAction.CURRENT_PLAYER, XPlayerAction.CW_OF_CURRENT, XPlayerAction.NEXT_PLAYER, XPlayerAction.OPPOSITE_PLAYER, XPlayerAction.PREVIOUS_PLAYER, XPlayerAction.PLAYER_WITH_BLUE_SQUARE }, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new onSuit(Card.CardSuit.Spades), new onSuit(Card.CardSuit.Hearts), new onSuit(Card.CardSuit.Clubs), new onSuit(Card.CardSuit.Diamonds), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new prevCardIsSuit(Card.CardSuit.Spades), new prevCardIsSuit(Card.CardSuit.Hearts), new prevCardIsSuit(Card.CardSuit.Clubs), new prevCardIsSuit(Card.CardSuit.Diamonds), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Spades), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Diamonds, Card.CardSuit.Diamonds), new CurrentPlayerHasXCardsAfterPlaying(1), new CurrentPlayerHasXCardsAfterPlaying(2), new CurrentPlayerHasXCardsAfterPlaying(3), new CurrentPlayerHasXCardsAfterPlaying(4) }, null)
 	{
 
 	}
@@ -286,7 +364,79 @@ public class TakeWhiteCircle : ObjectEffect
 	{
 		FieldInfo field1 = xPlayerAction.GetType().GetField(xPlayerAction.ToString());
 		DescriptionAttribute attribute1 = Attribute.GetCustomAttribute(field1, typeof(DescriptionAttribute)) as DescriptionAttribute;
-		return attribute1.Description + " must take the white circular token";
+		return attribute1.Description + " must take the white circle";
+	}
+	public override string actionString(XPlayerAction receivingPlayer)
+	{
+		return "*Takes the White Circle*";
+	}
+	public override string failureToPerformActionString()
+	{
+		return "Failure to take the White Circle";
+	}
+	public override string illegalActionString()
+	{
+		return "Bad taking of the White Circle";
+	}
+	public override string undoActionString(List<int> players, string[] playerNames)
+	{
+		if(players.Count == 0)
+			return "Returns the White Circle to the table";
+		return "*Gives the White Circle to " + playerNames[players[0]] + " player*";
+	}
+}
+public class BlueSquare : GameObjectMain
+{
+	public BlueSquare(GameObjectObj[] gameObjectObjs) : base(gameObjectObjs)
+	{
+
+	}
+	public override string toString(int index)
+	{
+		return "Blue Square";
+	}
+}
+public class TakeBlueSquare : ObjectEffect
+{
+	public TakeBlueSquare(BlueSquare BS) : base(Effect.TAKE_GAME_OBJECT, ViolationPhrases.FAILURE_TAKING_BLUE_SQUARE, ViolationPhrases.BAD_TAKING_BLUE_SQUARE, Effect.RETURN_GAME_OBJECT, XPlayerAction.PLAYER_WITH_BLUE_SQUARE, true, false, BS, true, false, true, false, new List<XPlayerAction>() { XPlayerAction.CCW_OF_CURRENT, XPlayerAction.CURRENT_PLAYER, XPlayerAction.CW_OF_CURRENT, XPlayerAction.NEXT_PLAYER, XPlayerAction.OPPOSITE_PLAYER, XPlayerAction.PREVIOUS_PLAYER, XPlayerAction.PLAYER_WITH_WHITE_CIRCLE }, new List<Trigger>() { new onRank(Card.CardRank.Ace), new onRank(Card.CardRank.Two), new onRank(Card.CardRank.Three), new onRank(Card.CardRank.Four), new onRank(Card.CardRank.Five), new onRank(Card.CardRank.Six), new onRank(Card.CardRank.Seven), new onRank(Card.CardRank.Eight), new onRank(Card.CardRank.Nine), new onRank(Card.CardRank.Ten), new onRank(Card.CardRank.Jack), new onRank(Card.CardRank.Queen), new onRank(Card.CardRank.King), new onSuit(Card.CardSuit.Spades), new onSuit(Card.CardSuit.Hearts), new onSuit(Card.CardSuit.Clubs), new onSuit(Card.CardSuit.Diamonds), new prevCardIsRank(Card.CardRank.Ace), new prevCardIsRank(Card.CardRank.Two), new prevCardIsRank(Card.CardRank.Three), new prevCardIsRank(Card.CardRank.Four), new prevCardIsRank(Card.CardRank.Five), new prevCardIsRank(Card.CardRank.Six), new prevCardIsRank(Card.CardRank.Seven), new prevCardIsRank(Card.CardRank.Eight), new prevCardIsRank(Card.CardRank.Nine), new prevCardIsRank(Card.CardRank.Ten), new prevCardIsRank(Card.CardRank.Jack), new prevCardIsRank(Card.CardRank.Queen), new prevCardIsRank(Card.CardRank.King), new prevCardIsSuit(Card.CardSuit.Spades), new prevCardIsSuit(Card.CardSuit.Hearts), new prevCardIsSuit(Card.CardSuit.Clubs), new prevCardIsSuit(Card.CardSuit.Diamonds), new differenceOfTwoCards(0), new differenceOfTwoCards(1), new differenceOfTwoCards(2), new differenceOfTwoCards(3), new differenceOfTwoCards(4), new differentSuit(), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Spades), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Spades, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Hearts), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Hearts, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Clubs), new SuitWithSuit(Card.CardSuit.Clubs, Card.CardSuit.Diamonds), new SuitWithSuit(Card.CardSuit.Diamonds, Card.CardSuit.Diamonds), new CurrentPlayerHasXCardsAfterPlaying(1), new CurrentPlayerHasXCardsAfterPlaying(2), new CurrentPlayerHasXCardsAfterPlaying(3), new CurrentPlayerHasXCardsAfterPlaying(4) }, null)
+	{
+
+	}
+
+	public override bool pickReceivingPlayer(List<XPlayerAction> RPL)
+	{
+		receivingPlayer = xPlayerAction;
+		return true;
+	}
+	public override XPlayerAction[] getNewXPlayerActions()
+	{
+		XPlayerAction[] xPlayerActions = { XPlayerAction.PLAYER_WITH_BLUE_SQUARE };
+		return xPlayerActions;
+	}
+
+	public override string toString()
+	{
+		FieldInfo field1 = xPlayerAction.GetType().GetField(xPlayerAction.ToString());
+		DescriptionAttribute attribute1 = Attribute.GetCustomAttribute(field1, typeof(DescriptionAttribute)) as DescriptionAttribute;
+		return attribute1.Description + " must take the blue square";
+	}
+	public override string actionString(XPlayerAction receivingPlayer)
+	{
+		return "*Takes the Blue Square*";
+	}
+	public override string failureToPerformActionString()
+	{
+		return "Failure to take the Blue Square";
+	}
+	public override string illegalActionString()
+	{
+		return "Bad taking of the Blue Square";
+	}
+	public override string undoActionString(List<int> players, string[] playerNames)
+	{
+		if (players.Count == 0)
+			return "Returns the Blue Square to the table";
+		return "*Gives the Blue Square to " + playerNames[players[0]] + " player*";
 	}
 }
 

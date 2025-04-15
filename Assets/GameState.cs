@@ -6,7 +6,7 @@ public class GameState
 {
     public Deck playPile;
     public Bot[] players;
-    public int[] initialHandCounts;
+    public int[] handCountsAfterDrawPlay;
     public int turnDirection;
     public int currentPlayer;
     public int playerTakingAction;
@@ -14,6 +14,7 @@ public class GameState
     public bool prevPlayerPlayed;
     public int highestCardValue;
     public GameObjectMain whiteCircle;
+    public GameObjectMain blueSquare;
     public List<Rule> triggeredRules;
     public List<Rule> previousTriggeredRules;
 }

@@ -53,6 +53,10 @@ namespace CardStuff
         {
             return rank + " of " + suit;
         }
+        public string toActualString()
+        {
+            return actualRank + " of " + actualSuit;
+        }
         public void changeCardValues(CardRank rank, CardSuit suit)
         {
             actualRank = rank;

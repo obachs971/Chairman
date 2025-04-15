@@ -12,13 +12,15 @@ public class Rule
 		this.trigger = trigger;
 		this.effect = effect;
 	}
-	public bool HasTriggered(GameState gameState, int playerTakingAction, int nextTurnCounter, int prevPlayer, int lastPlayerPassed, int lastPlayerPlayed)
+	public bool HasTriggered(GameState gameState, int nextTurnCounter, int prevPlayer)
 	{
 		bool flag = true;
 		if (effect.isAction)
 		{
+			ActionEffect AE = (ActionEffect)effect;
+			List<int> playersTakingAction = new XPlayerIndex().getPlayerIndexes(AE.xPlayerAction, gameState, gameState.currentPlayer, gameState.turnDirection, nextTurnCounter, gameState.players.Length, prevPlayer);
 			flag = false;
-			if(playerTakingAction >= 0)
+			if(playersTakingAction.Count > 0)
 				flag = true;	
 		}
 		if (!flag)
@@ -40,26 +42,25 @@ public class Rule
 			}
 			if (!flag)
 				return false;
-			if (OE.receivingPlayer != XPlayerAction.NULL)
+			if (OE.receivingPlayer != XPlayerAction.NULL && OE.playerWithObject != XPlayerAction.NULL)
 			{
-				int playerReceiving = new XPlayerIndex().getPlayerIndex(OE.receivingPlayer, gameState, gameState.currentPlayer, gameState.turnDirection, nextTurnCounter, gameState.players.Length, prevPlayer, lastPlayerPassed, lastPlayerPlayed);
-				if (playerReceiving == -1)
+				List<int> playersReceiving = new XPlayerIndex().getPlayerIndexes(OE.receivingPlayer, gameState, gameState.currentPlayer, gameState.turnDirection, nextTurnCounter, gameState.players.Length, prevPlayer);
+				if (playersReceiving.Count == 0)
 					flag = false;
 				else
 				{
+					int playerReceiving = playersReceiving[0];
 					for (int i = 0; i < gameState.players.Length; i++)
 					{
 						if (gameState.players[i].hasObject(OE.gameObject))
 						{
 							//Debug.LogFormat("PLAYER THAT HAS OBJECT: {0}", i);
 							//Debug.LogFormat("PLAYER WHO NEED TO RECEIVE THE OBJECT: {0}", playerReceiving);
-
 							if (i == playerReceiving)
 							{
 								flag = false;
 								break;
 							}
-
 						}
 					}
 				}

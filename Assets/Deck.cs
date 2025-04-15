@@ -5,16 +5,18 @@ using System.Linq;
 using UnityEngine;
 using CardStuff;
 
-public class Deck  
+public class Deck : GameObjectMain
 {
 
     private List<Card> allCards;
     private List<Card> deck;
     private int numDecks;
-	public Deck(int n, List<Card> allCards)
+    private string deckName;
+    public Deck(int n, List<Card> allCards, MeshRenderer meshRenderer, float standingY, string deckName) : base(new GameObjectObj[] { new GameObjectObj(meshRenderer, new bool[][] { new bool[] { true }, new bool[] { true } }, standingY, 0.02f) })
     {
         numDecks = n;
         this.allCards = allCards;
+        this.deckName = deckName;
         reshuffleDeck();
     }
     public void reshuffleDeck()
@@ -58,5 +60,9 @@ public class Deck
     public void AddToDeck(Card c)
     {
         deck.Add(c);
+    }
+    public override string toString(int index)
+    {
+        return deckName;
     }
 }
